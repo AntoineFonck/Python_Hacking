@@ -35,7 +35,7 @@ def change_mac(interface, new_mac):
     print("[+] Modifying " + interface + " MAC address to " + new_mac)
     if system() == "Linux":
         call(["ifconfig", interface, "down"])
-        call(["ifconfig", interface, "hw ether", new_mac])
+        call(["ifconfig", interface, "hw", "ether", new_mac])
         call(["ifconfig", interface, "up"])
     elif system() == "Darwin":
         call(["ifconfig", interface, "ether", new_mac])
