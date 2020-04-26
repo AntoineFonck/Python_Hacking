@@ -94,6 +94,10 @@ class Autoscan:
         return crawl_list
 
     def extract_links(self, host):
+        """
+        :param host: host to extract links from
+        :return: list of found links if some are found
+        """
         response = self.try_request(host)
         return re.findall('(?:href=")(.*?)"', str(response.content))
 
