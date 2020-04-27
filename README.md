@@ -10,6 +10,10 @@ You can also use a package manager like pipenv to create a virtual environment w
 pipenv install -r requirements.txt
 pipenv shell
 ```
+or
+```
+pipenv run autoscan.py
+```
 
 To use the standalone program:
 ```
