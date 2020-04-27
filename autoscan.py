@@ -5,14 +5,16 @@ import re
 from urllib import parse
 from bs4 import BeautifulSoup
 from nmap import PortScanner
+import pprint
 
 
 class Autoscan:
     def __init__(self, host, ignore_links=[]):
         self.session = requests.Session()
-        self.target_host = host
+        self.target_host = re.sub(r"^http://|^https://", "", host)
         self.target_IP = socket.gethostbyname(self.target_host)
         self.target_links = []
+        self.crawl_links = []
         self.links_to_ignore = ignore_links
         self.portscanner = PortScanner()
         self.assets_dict = {}
@@ -25,11 +27,11 @@ class Autoscan:
         if host is None:
             host = self.target_host
         try:
-            return requests.get("http://" + host)
+            return requests.get("http://" + host, timeout=10)
         except requests.exceptions.ConnectionError:
             pass
 
-    def check_proxy(self, host=None, wordlist="./proxies.txt"):
+    def check_proxy(self, host=None, wordlist="./wordlists/proxies.txt"):
         """
         :param host: host to be checked for known proxies
         :return: the name of the proxy if found, none otherwise
@@ -59,7 +61,7 @@ class Autoscan:
         else:
             return False
 
-    def find_subdomains(self, host=None, wordlist="./subdomains.txt"):
+    def find_subdomains(self, host=None, wordlist="./wordlists/subdomains.txt"):
         """
         :param host: host to be checked for subdomains
         :return: the list of subdomains, none if none is found
@@ -76,7 +78,7 @@ class Autoscan:
                     subdomain_list.append(test_url)
         return subdomain_list
 
-    def crawl(self, host=None, wordlist="./crawling.txt"):
+    def crawl(self, host=None, wordlist="./wordlists/crawling.txt"):
         """
         :param host: host to crawl
         :return: the list of answering url, none if none is found
@@ -91,13 +93,16 @@ class Autoscan:
                 response = self.try_request(test_url)
                 if response:
                     crawl_list.append(test_url)
+        self.crawl_links = crawl_list
         return crawl_list
 
-    def extract_links(self, host):
+    def extract_links(self, host=None):
         """
         :param host: host to extract links from
         :return: list of found links if some are found
         """
+        if host is None:
+            host = self.target_host
         response = self.try_request(host)
         return re.findall('(?:href=")(.*?)"', str(response.content))
 
@@ -138,11 +143,13 @@ class Autoscan:
     def sslscan(self, host=None):
         """
         :param host: host on which to perform a sslscan with nmap
-        :return: raw scan result
+        :return: raw script from scan result
         """
         if host is None:
             host = self.target_host
         output = self.portscanner.scan(host, "443", arguments="--script ssl-enum-ciphers")
+        if "script" not in str(output['scan']):
+            return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
         if host == self.target_host:
             self.assets_dict["SSL"] = {"TLS1.0": {"enabled": False}, "TLS1.1": {"enabled": False},
@@ -156,3 +163,96 @@ class Autoscan:
             if "TLSv1.3" in str(script_output):
                 self.assets_dict["SSL"]["TLS1.3"]["enabled"] = True
         return script_output
+
+    def http_header_scan(self, host=None):
+        """
+        :param host: host on which to perform a http header scan with nmap
+        :return: raw script from scan result
+        """
+        if host is None:
+            host = self.target_host
+        output = self.portscanner.scan(host, "443", arguments="--script http-security-headers")
+        if "script" not in str(output['scan']):
+            return None
+        script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
+        if host == self.target_host:
+            self.assets_dict["HTTP_HEADERS"] = script_output
+        return script_output
+
+    def xss_scan(self, host=None):
+        """
+        :param host: host on which to perform a XSS scan with nmap
+        :return: raw script from scan result
+        """
+        if host is None:
+            host = self.target_host
+        output = self.portscanner.scan(host, "443", arguments="--script http-unsafe-output-escaping,http-stored-xss,"
+                                                              "http-dombased-xss")
+        if "script" not in str(output['scan']):
+            return None
+        script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
+        if host == self.target_host:
+            self.assets_dict["XSS"] = script_output
+        return script_output
+
+    def sql_scan(self, host=None):
+        """
+        :param host: host on which to perform a SQL scan with nmap
+        :return: raw script from scan result
+        """
+        if host is None:
+            host = self.target_host
+        output = self.portscanner.scan(host, "443", arguments="--script http-sql-injection")
+        if "script" not in str(output['scan']):
+            return None
+        script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
+        if host == self.target_host:
+            self.assets_dict["SQL"] = script_output
+        return script_output
+
+    def run(self, host=None):
+        if host is None:
+            host = self.target_host
+        print("\t\t\tAUTOSCAN on host: " + host + "\n\n")
+        proxy = self.check_proxy(host)
+        if proxy is not None:
+            print("[+] Found proxy: " + proxy)
+        redirect = self.check_http_redirect(host)
+        if redirect is not False:
+            print("[+] Found redirection (from http://" + host + "): " + redirect)
+        print("Trying to find subdomains ...")
+        subdomain_list = self.find_subdomains(host)
+        if not subdomain_list:
+            print("[-] No subdomains found")
+        else:
+            for subdomain in subdomain_list:
+                print("[+] Found: " + subdomain)
+        """
+        print("Crawling the website for answering URL (not recursive) ...")
+        crawl_list = self.crawl(host)
+        if not crawl_list:
+            print("[-] No links found by crawling")
+        else:
+            for crawl_link in crawl_list:
+                print("[+] Found: " + crawl_link)
+        """
+        print("Running a spider on the website to find URL (recursive) ...")
+        self.spider(host)
+        if not self.target_links:
+            print("[-] No links found with the spider")
+        else:
+            for spider_link in self.target_links:
+                print("[+] Found: " + spider_link)
+        print("Now running several nmap scan on the website (port 443) ...")
+        sslscan = self.sslscan(host)
+        print("[+] SSL SCAN raw output: ")
+        pprint.pprint(sslscan)
+        http_header_scan = self.http_header_scan(host)
+        print("[+] HTTP HEADERS SCAN raw output: ")
+        pprint.pprint(http_header_scan)
+        xss_scan = self.xss_scan(host)
+        print("[+] XSS SCAN raw output: ")
+        pprint.pprint(xss_scan)
+        sql_scan = self.sql_scan(host)
+        print("[+] SQL SCAN raw output: ")
+        pprint.pprint(sql_scan)
