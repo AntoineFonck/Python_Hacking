@@ -14,6 +14,13 @@ def get_options():
         help="target to scan",
         metavar="TARGET"
     )
+    parser.add_option(
+        "-d",
+        "--directory",
+        dest="directory",
+        help="specific directory to scan",
+        metavar="DIRECTORY"
+    )
     (options, args) = parser.parse_args()
     if not options.target:
         parser.error("Missing target, use -h or --help for more info")
@@ -21,5 +28,8 @@ def get_options():
 
 
 all_options = get_options()
-autoscan = Autoscan(all_options.target)
+if not all_options.directory:
+    autoscan = Autoscan(all_options.target)
+else:
+    autoscan = Autoscan(all_options.target, directory=all_options.directory)
 autoscan.run()

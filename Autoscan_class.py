@@ -9,7 +9,7 @@ import pprint
 
 
 class Autoscan:
-    def __init__(self, host, ignore_links=[]):
+    def __init__(self, host, ignore_links=[], directory=None):
         self.session = requests.Session()
         self.target_host = re.sub(r"^http://|^https://", "", host)
         self.target_IP = socket.gethostbyname(self.target_host)
@@ -18,6 +18,7 @@ class Autoscan:
         self.links_to_ignore = ignore_links
         self.portscanner = PortScanner()
         self.assets_dict = {}
+        self.directory = directory
 
     def try_request(self, host=None):
         """
@@ -28,7 +29,8 @@ class Autoscan:
             host = self.target_host
         try:
             return requests.get("http://" + host, timeout=10)
-        except requests.exceptions.ConnectionError:
+        #except requests.exceptions.ConnectionError:
+        except:
             pass
 
     def check_proxy(self, host=None, wordlist="./wordlists/proxies.txt"):
@@ -55,8 +57,11 @@ class Autoscan:
         """
         if host is None:
             host = self.target_host
-        response = self.try_request(host)
-        if "301" in str(response.history):
+        if self.directory is None:
+            response = self.try_request(host)
+        else:
+            response = self.try_request(host + self.directory)
+        if re.search(r"30[0-9]", str(response.history)):
             return response.url
         else:
             return False
@@ -104,6 +109,8 @@ class Autoscan:
         if host is None:
             host = self.target_host
         response = self.try_request(host)
+        if response is None:
+            return None
         return re.findall('(?:href=")(.*?)"', str(response.content))
 
     def spider(self, host=None, restrict_scope=0):
@@ -115,19 +122,20 @@ class Autoscan:
         if host is None:
             host = self.target_host
         href_links = self.extract_links(host)
-        for link in href_links:
-            full_link = parse.urljoin("http://" + host, link)
+        if href_links is not None:
+            for link in href_links:
+                full_link = parse.urljoin("http://" + host, link)
 
-            if "#" in full_link:
-                full_link = full_link.split("#")[0]
+                if "#" in full_link:
+                    full_link = full_link.split("#")[0]
 
-            if full_link not in self.target_links and full_link not in self.links_to_ignore:
-                if restrict_scope == 1 and self.target_host in full_link:
-                    self.target_links.append(full_link)
-                    self.spider(full_link, restrict_scope)
-                elif restrict_scope == 0:
-                    self.target_links.append(full_link)
-                    self.spider(full_link, restrict_scope)
+                if full_link not in self.target_links and full_link not in self.links_to_ignore:
+                    if restrict_scope == 1 and self.target_host in full_link:
+                        self.target_links.append(full_link)
+                        self.spider(full_link, restrict_scope)
+                    elif restrict_scope == 0:
+                        self.target_links.append(full_link)
+                        self.spider(full_link, restrict_scope)
 
     def extract_forms(self, host=None):
         """
@@ -171,7 +179,10 @@ class Autoscan:
         """
         if host is None:
             host = self.target_host
-        output = self.portscanner.scan(host, "443", arguments="--script http-security-headers")
+        if self.directory is None:
+            output = self.portscanner.scan(host, "80,443", arguments="--script http-security-headers")
+        else:
+            output = self.portscanner.scan(host, "80,443", arguments="--script http-security-headers --script-args http-security-headers.path=" + self.directory)
         if "script" not in str(output['scan']):
             return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
@@ -186,8 +197,10 @@ class Autoscan:
         """
         if host is None:
             host = self.target_host
-        output = self.portscanner.scan(host, "443", arguments="--script http-unsafe-output-escaping,http-stored-xss,"
-                                                              "http-dombased-xss")
+        if self.directory is None:
+            output = self.portscanner.scan(host, "80,443", arguments="--script http-unsafe-output-escaping,http-stored-xss,http-dombased-xss")
+        else:
+            output = self.portscanner.scan(host, "80,443", arguments="--script http-unsafe-output-escaping,http-stored-xss,http-dombased-xss --script-args http-dombased-xss.singlepages={" + self.directory + "},http-stored-xss.formpaths={" + self.directory + "},http-unsafe-output-escaping.url=" + self.directory)
         if "script" not in str(output['scan']):
             return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
@@ -202,7 +215,10 @@ class Autoscan:
         """
         if host is None:
             host = self.target_host
-        output = self.portscanner.scan(host, "443", arguments="--script http-sql-injection")
+        if self.directory is None:
+            output = self.portscanner.scan(host, "80,443", arguments="--script http-sql-injection")
+        else:
+            output = self.portscanner.scan(host, "80,443", arguments="--script http-sql-injection --script-args http-sql-injection.url=" + self.directory)
         if "script" not in str(output['scan']):
             return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
