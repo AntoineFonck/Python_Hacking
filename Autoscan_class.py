@@ -9,7 +9,7 @@ import pprint
 
 
 class Autoscan:
-    def __init__(self, host, ignore_links=[], directory=None):
+    def __init__(self, host, ignore_links=[], directory=None, user=None, password=None):
         self.session = requests.Session()
         self.target_host = re.sub(r"^http://|^https://", "", host)
         self.target_IP = socket.gethostbyname(self.target_host)
@@ -19,8 +19,12 @@ class Autoscan:
         self.portscanner = PortScanner()
         self.assets_dict = {}
         self.directory = directory
+        self.user = user
+        self.password = password
+        if self.user is not None and self.password is not None:
+            self.session.auth = (self.user, self.password)
 
-    def try_request(self, host=None):
+    def try_http_request(self, host=None):
         """
         :param host: host to try to request with GET
         :return: the get response if answered, none if no answer
@@ -28,7 +32,26 @@ class Autoscan:
         if host is None:
             host = self.target_host
         try:
-            return requests.get("http://" + host, timeout=10)
+            if self.user is None and self.password is None:
+                return requests.get("http://" + host, timeout=10)
+            else:
+                return requests.get("http://" + host, auth=(self.user, self.password), timeout=10)
+        #except requests.exceptions.ConnectionError:
+        except:
+            pass
+
+    def try_https_request(self, host=None):
+        """
+        :param host: host to try to request with GET
+        :return: the get response if answered, none if no answer
+        """
+        if host is None:
+            host = self.target_host
+        try:
+            if self.user is None and self.password is None:
+                return requests.get("https://" + host, timeout=10)
+            else:
+                return requests.get("https://" + host, auth=(self.user, self.password), timeout=10)
         #except requests.exceptions.ConnectionError:
         except:
             pass
@@ -58,9 +81,9 @@ class Autoscan:
         if host is None:
             host = self.target_host
         if self.directory is None:
-            response = self.try_request(host)
+            response = self.try_http_request(host)
         else:
-            response = self.try_request(host + self.directory)
+            response = self.try_http_request(host + self.directory)
         if re.search(r"30[0-9]", str(response.history)):
             return response.url
         else:
@@ -78,7 +101,7 @@ class Autoscan:
             for line in wordlist_file:
                 word = line.strip()
                 test_url = word + "." + host
-                response = self.try_request(test_url)
+                response = self.try_https_request(test_url)
                 if response:
                     subdomain_list.append(test_url)
         return subdomain_list
@@ -95,7 +118,7 @@ class Autoscan:
             for line in wordlist_file:
                 word = line.strip()
                 test_url = host + "/" + word
-                response = self.try_request(test_url)
+                response = self.try_https_request(test_url)
                 if response:
                     crawl_list.append(test_url)
         self.crawl_links = crawl_list
@@ -108,7 +131,7 @@ class Autoscan:
         """
         if host is None:
             host = self.target_host
-        response = self.try_request(host)
+        response = self.try_https_request(host)
         if response is None:
             return None
         return re.findall('(?:href=")(.*?)"', str(response.content))
@@ -144,7 +167,7 @@ class Autoscan:
         """
         if host is None:
             host = self.target_host
-        response = self.session.get("http://" + host)
+        response = self.session.get("https://" + host)
         parsed_html = BeautifulSoup(response.content, features="html.parser")
         return parsed_html.findAll("form")
 
@@ -180,9 +203,9 @@ class Autoscan:
         if host is None:
             host = self.target_host
         if self.directory is None:
-            output = self.portscanner.scan(host, "80,443", arguments="--script http-security-headers")
+            output = self.portscanner.scan(host, "443", arguments="--script http-security-headers")
         else:
-            output = self.portscanner.scan(host, "80,443", arguments="--script http-security-headers --script-args http-security-headers.path=" + self.directory)
+            output = self.portscanner.scan(host, "443", arguments="--script http-security-headers --script-args http-security-headers.path=" + self.directory)
         if "script" not in str(output['scan']):
             return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
@@ -198,9 +221,9 @@ class Autoscan:
         if host is None:
             host = self.target_host
         if self.directory is None:
-            output = self.portscanner.scan(host, "80,443", arguments="--script http-unsafe-output-escaping,http-stored-xss,http-dombased-xss")
+            output = self.portscanner.scan(host, "443", arguments="--script http-unsafe-output-escaping,http-stored-xss,http-dombased-xss")
         else:
-            output = self.portscanner.scan(host, "80,443", arguments="--script http-unsafe-output-escaping,http-stored-xss,http-dombased-xss --script-args http-dombased-xss.singlepages={" + self.directory + "},http-stored-xss.formpaths={" + self.directory + "},http-unsafe-output-escaping.url=" + self.directory)
+            output = self.portscanner.scan(host, "443", arguments="--script http-unsafe-output-escaping,http-stored-xss,http-dombased-xss --script-args http-dombased-xss.singlepages={" + self.directory + "},http-stored-xss.formpaths={" + self.directory + "},http-unsafe-output-escaping.url=" + self.directory)
         if "script" not in str(output['scan']):
             return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']
@@ -216,9 +239,9 @@ class Autoscan:
         if host is None:
             host = self.target_host
         if self.directory is None:
-            output = self.portscanner.scan(host, "80,443", arguments="--script http-sql-injection")
+            output = self.portscanner.scan(host, "443", arguments="--script http-sql-injection")
         else:
-            output = self.portscanner.scan(host, "80,443", arguments="--script http-sql-injection --script-args http-sql-injection.url=" + self.directory)
+            output = self.portscanner.scan(host, "443", arguments="--script http-sql-injection --script-args http-sql-injection.url=" + self.directory)
         if "script" not in str(output['scan']):
             return None
         script_output = output["scan"][str(socket.gethostbyname(host))]["tcp"][443]['script']

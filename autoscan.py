@@ -21,6 +21,13 @@ def get_options():
         help="specific directory to scan",
         metavar="DIRECTORY"
     )
+    parser.add_option(
+        "-u",
+        "--auth",
+        dest="authentication",
+        help="HTTP Basic auth in the form user:pass",
+        metavar="AUTHENTICATION"
+    )
     (options, args) = parser.parse_args()
     if not options.target:
         parser.error("Missing target, use -h or --help for more info")
@@ -28,8 +35,15 @@ def get_options():
 
 
 all_options = get_options()
-if not all_options.directory:
-    autoscan = Autoscan(all_options.target)
+if all_options.authentication is not None:
+    username = all_options.authentication.split(":")[0]
+    password = all_options.authentication.split(":")[1]
 else:
-    autoscan = Autoscan(all_options.target, directory=all_options.directory)
+    username = None
+    password = None
+if all_options.directory is not None:
+    directory = all_options.directory
+else:
+    directory = None
+autoscan = Autoscan(all_options.target, directory=directory, user=username, password=password)
 autoscan.run()
