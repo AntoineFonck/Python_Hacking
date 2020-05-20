@@ -84,7 +84,7 @@ class Autoscan:
             response = self.try_http_request(host)
         else:
             response = self.try_http_request(host + self.directory)
-        if re.search(r"30[0-9]", str(response.history)):
+        if response and re.search(r"30[0-9]", str(response.history)):
             return response.url
         else:
             return False
