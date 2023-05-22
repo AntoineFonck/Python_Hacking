@@ -10,7 +10,7 @@ ipwhois == 1.1.0
 python_nmap == 0.6.1
 
 # Python_Hacking/Autoscan_class.py: 3
-requests == 2.23.0
+requests == 2.31.0
 
 # Python_Hacking/other_scripts/arp_spoofer.py: 3
 # Python_Hacking/other_scripts/fullscan.py: 3,4
